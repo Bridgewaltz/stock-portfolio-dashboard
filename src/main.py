@@ -16,9 +16,9 @@ app.config['SECRET_KEY'] = 'asdf#FGSgvasgf$5$WGT'
 CORS(app)  # Enable CORS for all routes
 
 # Configuration
-NOTION_TOKEN = "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"
-STOCK_DATABASE_ID = "24fe1ee2ae7a80438c24d1c79249b1d7"
-PORTFOLIO_DATABASE_ID = "24fe1ee2ae7a800eadfccdb682641562"
+NOTION_TOKEN = "NOTION_TOKEN', 'your_notion_token_here"
+STOCK_DATABASE_ID = "STOCK_DATABASE_ID', 'your_stock_db_id"
+PORTFOLIO_DATABASE_ID = "PORTFOLIO_DATABASE_ID', 'your_portfolio_db_id"
 
 # Initialize integrator
 integrator = ImprovedStockNotionIntegrator(
