@@ -1,17 +1,14 @@
 """
-Enhanced Stock-Notion Integration with Improved Data Fetching
-Uses Manus API Hub for better stock data and proper previous close calculation
+Enhanced Stock-Notion Integration with Public APIs
+Uses Yahoo Finance public API for stock data that works on any hosting platform
 """
 
-import sys
-import os
-sys.path.append('/opt/.manus/.sandbox-runtime')
-
-from data_api import ApiClient
+import requests
 from notion_client import Client
 from datetime import datetime, date
 import argparse
 import time
+import json
 
 class ImprovedStockNotionIntegrator:
     def __init__(self, notion_token: str, stock_database_id: str, portfolio_database_id: str):
@@ -24,7 +21,6 @@ class ImprovedStockNotionIntegrator:
             portfolio_database_id (str): Historical portfolio database ID
         """
         self.notion = Client(auth=notion_token)
-        self.api_client = ApiClient()
         self.stock_database_id = stock_database_id
         self.portfolio_database_id = portfolio_database_id
         
@@ -33,7 +29,7 @@ class ImprovedStockNotionIntegrator:
         
     def fetch_stock_data(self, symbol: str):
         """
-        Fetch stock data from Yahoo Finance API
+        Fetch stock data from Yahoo Finance public API
         
         Args:
             symbol (str): Stock symbol to fetch
@@ -44,26 +40,44 @@ class ImprovedStockNotionIntegrator:
         try:
             print(f"Fetching data for {symbol}...")
             
-            # Use Yahoo Finance API from Manus API Hub
-            response = self.api_client.call_api('YahooFinance/get_stock_chart', query={
-                'symbol': symbol,
+            # Use Yahoo Finance public API endpoints
+            # Method 1: Try Yahoo Finance query API
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+            params = {
                 'region': 'US',
+                'lang': 'en-US',
+                'includePrePost': 'false',
                 'interval': '1d',
                 'range': '5d',
-                'includeAdjustedClose': True
-            })
+                'corsDomain': 'finance.yahoo.com',
+                '.tsrc': 'finance'
+            }
             
-            if not response or 'chart' not in response or 'result' not in response['chart']:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            response = requests.get(url, params=params, headers=headers, timeout=10)
+            
+            if response.status_code != 200:
+                print(f"API request failed for {symbol}: {response.status_code}")
+                return None
+                
+            data = response.json()
+            
+            if not data or 'chart' not in data or 'result' not in data['chart'] or not data['chart']['result']:
                 print(f"No data found for {symbol}")
                 return None
                 
-            result = response['chart']['result'][0]
+            result = data['chart']['result'][0]
             meta = result['meta']
             
             # Get current price
             current_price = meta.get('regularMarketPrice', 0)
+            if current_price == 0:
+                current_price = meta.get('previousClose', 0)
             
-            # Get company name
+            # Get company name - try multiple sources
             company_name = meta.get('longName', meta.get('shortName', symbol))
             
             # Calculate previous close from historical data
@@ -72,7 +86,7 @@ class ImprovedStockNotionIntegrator:
             # Method 1: Try to get from historical closes
             if 'indicators' in result and 'quote' in result['indicators']:
                 quotes = result['indicators']['quote'][0]
-                closes = [x for x in quotes['close'] if x is not None and x > 0]
+                closes = [x for x in quotes.get('close', []) if x is not None and x > 0]
                 
                 if len(closes) >= 2:
                     # Use the second-to-last close as previous close
@@ -95,8 +109,8 @@ class ImprovedStockNotionIntegrator:
                     # Final fallback to current price
                     previous_close = current_price
             
-            # Get other data
-            volume = meta.get('regularMarketVolume', 0)
+            # Get other data with fallbacks
+            volume = meta.get('regularMarketVolume', meta.get('volume', 0))
             market_cap = meta.get('marketCap', 0)
             fifty_two_week_high = meta.get('fiftyTwoWeekHigh', 0)
             fifty_two_week_low = meta.get('fiftyTwoWeekLow', 0)
@@ -116,13 +130,16 @@ class ImprovedStockNotionIntegrator:
                 'market_cap': market_cap,
                 'fifty_two_week_high': fifty_two_week_high,
                 'fifty_two_week_low': fifty_two_week_low,
-                'exchange': meta.get('exchangeName', 'Unknown'),
+                'exchange': meta.get('exchangeName', meta.get('fullExchangeName', 'Unknown')),
                 'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
             
             print(f"✅ {symbol}: ${current_price:.2f} (Previous: ${previous_close:.2f}, Change: ${price_change:+.2f})")
             return stock_data
             
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Network error fetching data for {symbol}: {str(e)}")
+            return None
         except Exception as e:
             print(f"❌ Error fetching data for {symbol}: {str(e)}")
             return None
@@ -312,7 +329,7 @@ class ImprovedStockNotionIntegrator:
                 failed_count += 1
             
             # Small delay to avoid rate limiting
-            time.sleep(0.5)
+            time.sleep(1)
         
         print(f"\n📊 Update Summary:")
         print(f"   ✅ Successfully updated: {updated_count}")
@@ -345,42 +362,43 @@ class ImprovedStockNotionIntegrator:
                 print(f"❌ Failed to add {symbol} to main database")
                 return False
             
-            # Add to portfolio database for historical tracking
-            try:
-                portfolio_properties = {
-                    "Stock Symbol": {
-                        "title": [
-                            {
-                                "text": {
-                                    "content": symbol
+            # Add to portfolio database for historical tracking (if portfolio database exists)
+            if self.portfolio_database_id:
+                try:
+                    portfolio_properties = {
+                        "Stock Symbol": {
+                            "title": [
+                                {
+                                    "text": {
+                                        "content": symbol
+                                    }
                                 }
+                            ]
+                        },
+                        "Date": {
+                            "date": {
+                                "start": datetime.now().strftime('%Y-%m-%d')
                             }
-                        ]
-                    },
-                    "Date": {
-                        "date": {
-                            "start": datetime.now().strftime('%Y-%m-%d')
+                        },
+                        "Price": {
+                            "number": stock_data['current_price']
+                        },
+                        "Shares Owned": {
+                            "number": 0  # Default to 0, user can update
+                        },
+                        "Total Value": {
+                            "number": 0  # Will be calculated when shares are added
                         }
-                    },
-                    "Price": {
-                        "number": stock_data['current_price']
-                    },
-                    "Shares Owned": {
-                        "number": 0  # Default to 0, user can update
-                    },
-                    "Total Value": {
-                        "number": 0  # Will be calculated when shares are added
                     }
-                }
-                
-                self.notion.pages.create(
-                    parent={"database_id": self.portfolio_database_id},
-                    properties=portfolio_properties
-                )
-                print(f"✅ Added {symbol} to portfolio tracking")
-                
-            except Exception as e:
-                print(f"⚠️ Added to main database but failed to add to portfolio: {str(e)}")
+                    
+                    self.notion.pages.create(
+                        parent={"database_id": self.portfolio_database_id},
+                        properties=portfolio_properties
+                    )
+                    print(f"✅ Added {symbol} to portfolio tracking")
+                    
+                except Exception as e:
+                    print(f"⚠️ Added to main database but failed to add to portfolio: {str(e)}")
             
             print(f"🎉 Successfully added {symbol} with automatic integration!")
             return True
@@ -398,6 +416,10 @@ class ImprovedStockNotionIntegrator:
         """
         try:
             print("📊 Calculating portfolio summary...")
+            
+            if not self.portfolio_database_id:
+                # If no portfolio database, try to get portfolio data from main database
+                return self.get_portfolio_summary_from_main_db()
             
             # Get all portfolio entries
             response = self.notion.databases.query(
@@ -456,6 +478,57 @@ class ImprovedStockNotionIntegrator:
                 'positions': 0
             }
     
+    def get_portfolio_summary_from_main_db(self):
+        """
+        Get portfolio summary from main database if no separate portfolio database
+        """
+        try:
+            response = self.notion.databases.query(
+                database_id=self.stock_database_id,
+                page_size=100
+            )
+            
+            total_value = 0
+            total_investment = 0
+            positions = 0
+            
+            for page in response['results']:
+                properties = page['properties']
+                
+                # Get shares owned and purchase price from main database
+                shares = properties.get('Shares Owned', {}).get('number', 0) or 0
+                purchase_price = properties.get('Purchase Price', {}).get('number', 0) or 0
+                current_price = properties.get('Current Price', {}).get('number', 0) or 0
+                
+                if shares > 0 and purchase_price > 0 and current_price > 0:
+                    positions += 1
+                    current_value = shares * current_price
+                    investment_value = shares * purchase_price
+                    
+                    total_value += current_value
+                    total_investment += investment_value
+            
+            gain_loss = total_value - total_investment
+            return_pct = (gain_loss / total_investment * 100) if total_investment > 0 else 0
+            
+            return {
+                'total_value': total_value,
+                'total_investment': total_investment,
+                'gain_loss': gain_loss,
+                'return_percentage': return_pct,
+                'positions': positions
+            }
+            
+        except Exception as e:
+            print(f"❌ Error calculating portfolio summary from main DB: {str(e)}")
+            return {
+                'total_value': 0,
+                'total_investment': 0,
+                'gain_loss': 0,
+                'return_percentage': 0,
+                'positions': 0
+            }
+    
     def get_current_price(self, symbol: str):
         """
         Get current price for a symbol from the main database
@@ -496,6 +569,10 @@ class ImprovedStockNotionIntegrator:
         """
         try:
             print("📸 Creating portfolio snapshot...")
+            
+            if not self.portfolio_database_id:
+                print("⚠️ No portfolio database configured for snapshots")
+                return False
             
             summary = self.get_portfolio_summary()
             
