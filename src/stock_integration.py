@@ -143,7 +143,36 @@ class ImprovedStockNotionIntegrator:
         except Exception as e:
             print(f"❌ Error fetching data for {symbol}: {str(e)}")
             return None
-    
+   
+    def remove_stock_from_database(self, symbol):
+    """Remove a stock from the Notion database"""
+    try:
+        # Query the database to find the stock
+        response = self.notion.databases.query(
+            database_id=self.stock_database_id,
+            filter={
+                "property": "Stock Symbol",
+                "title": {
+                    "equals": symbol
+                }
+            }
+        )
+        
+        if response['results']:
+            # Delete the page
+            page_id = response['results'][0]['id']
+            self.notion.pages.update(
+                page_id=page_id,
+                archived=True
+            )
+            logger.info(f"Successfully removed {symbol} from database")
+        else:
+            raise Exception(f"Stock {symbol} not found in database")
+            
+    except Exception as e:
+        logger.error(f"Error removing stock {symbol}: {str(e)}")
+        raise e
+        
     def get_stocks_from_database(self):
         """
         Dynamically get all stock symbols from the Notion database
