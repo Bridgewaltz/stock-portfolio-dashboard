@@ -14,7 +14,7 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100% );
             min-height: 100vh;
             color: #333;
             line-height: 1.6;
@@ -79,40 +79,6 @@
             font-size: 1.4rem;
         }
 
-        .portfolio-summary {
-            grid-column: 1 / -1;
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-            color: white;
-            text-align: center;
-        }
-
-        .portfolio-summary .card-header {
-            color: white;
-            justify-content: center;
-        }
-
-        .portfolio-metrics {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
-        }
-
-        .metric {
-            text-align: center;
-        }
-
-        .metric-value {
-            font-size: 2rem;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-
-        .metric-label {
-            font-size: 0.9rem;
-            opacity: 0.9;
-        }
-
         .input-group {
             margin-bottom: 20px;
         }
@@ -170,16 +136,6 @@
         .btn-secondary:hover {
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(245, 87, 108, 0.4);
-        }
-
-        .btn-success {
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-            color: white;
-        }
-
-        .btn-success:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(79, 172, 254, 0.4);
         }
 
         .stocks-grid {
@@ -252,10 +208,6 @@
                 grid-template-columns: 1fr;
             }
 
-            .portfolio-metrics {
-                grid-template-columns: repeat(2, 1fr);
-            }
-
             .stocks-grid {
                 grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
             }
@@ -277,6 +229,10 @@
             transform: translateY(-1px);
             box-shadow: 0 3px 10px rgba(102, 126, 234, 0.3);
         }
+
+        .stocks-card {
+            grid-column: 1 / -1;
+        }
     </style>
 </head>
 <body>
@@ -284,16 +240,6 @@
         <div class="header">
             <h1>📈 Enhanced Stock-Notion Portfolio Dashboard</h1>
             <p>Manage your stocks and track portfolio performance over time</p>
-        </div>
-
-        <!-- Portfolio Summary -->
-        <div class="card portfolio-summary">
-            <div class="card-header">
-                <span class="icon">💰</span>
-                Portfolio Summary
-                <button class="refresh-btn" onclick="loadPortfolioSummary()">REFRESH</button>
-            </div>
-            <div id="portfolioSummary" class="loading">Loading...</div>
         </div>
 
         <div class="dashboard-grid">
@@ -327,7 +273,7 @@
         </div>
 
         <!-- Currently Tracked Stocks -->
-        <div class="card">
+        <div class="card stocks-card">
             <div class="card-header">
                 <span class="icon">📊</span>
                 Currently Tracked Stocks
@@ -344,7 +290,6 @@
         // Load initial data
         document.addEventListener('DOMContentLoaded', function() {
             loadStocks();
-            loadPortfolioSummary();
         });
 
         // Load stocks from API
@@ -385,64 +330,6 @@
             stocksContainer.innerHTML = `<div class="stocks-grid">${stocksGrid}</div>`;
         }
 
-        // Load portfolio summary
-        async function loadPortfolioSummary() {
-            try {
-                document.getElementById('portfolioSummary').innerHTML = '<div class="loading">Loading...</div>';
-                
-                const response = await fetch('/api/portfolio/summary');
-                const data = await response.json();
-                
-                if (data.success && data.portfolio) {
-                    displayPortfolioSummary(data.portfolio);
-                } else {
-                    document.getElementById('portfolioSummary').innerHTML = '<div class="loading">No portfolio data available. Add shares and purchase prices to your stocks.</div>';
-                }
-            } catch (error) {
-                document.getElementById('portfolioSummary').innerHTML = '<div class="loading">Error loading portfolio data.</div>';
-            }
-        }
-
-        // Display portfolio summary
-        function displayPortfolioSummary(portfolio) {
-            const totalValue = portfolio.total_value || 0;
-            const totalInvestment = portfolio.total_investment || 0;
-            const gainLoss = portfolio.gain_loss || 0;
-            const returnPercentage = portfolio.return_percentage || 0;
-            const positions = portfolio.positions || 0;
-
-            const summaryHTML = `
-                <div class="portfolio-metrics">
-                    <div class="metric">
-                        <div class="metric-value">$${totalValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-                        <div class="metric-label">Total Value</div>
-                    </div>
-                    <div class="metric">
-                        <div class="metric-value">$${totalInvestment.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-                        <div class="metric-label">Total Investment</div>
-                    </div>
-                    <div class="metric">
-                        <div class="metric-value" style="color: ${gainLoss >= 0 ? '#48bb78' : '#f56565'}">
-                            ${gainLoss >= 0 ? '+' : ''}$${gainLoss.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                        </div>
-                        <div class="metric-label">Gain/Loss</div>
-                    </div>
-                    <div class="metric">
-                        <div class="metric-value" style="color: ${returnPercentage >= 0 ? '#48bb78' : '#f56565'}">
-                            ${returnPercentage >= 0 ? '+' : ''}${returnPercentage.toFixed(2)}%
-                        </div>
-                        <div class="metric-label">Return</div>
-                    </div>
-                    <div class="metric">
-                        <div class="metric-value">${positions}</div>
-                        <div class="metric-label">Positions</div>
-                    </div>
-                </div>
-            `;
-
-            document.getElementById('portfolioSummary').innerHTML = summaryHTML;
-        }
-
         // Update stocks
         async function updateStocks() {
             const symbols = document.getElementById('updateSymbols').value.trim();
@@ -467,7 +354,6 @@
                 if (data.success) {
                     showMessage(`Successfully updated ${data.updated} stocks. ${data.failed} failed.`, 'success');
                     loadStocks();
-                    loadPortfolioSummary();
                 } else {
                     showMessage('Error updating stocks: ' + data.error, 'error');
                 }
