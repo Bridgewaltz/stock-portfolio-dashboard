@@ -138,6 +138,16 @@
             box-shadow: 0 5px 15px rgba(245, 87, 108, 0.4);
         }
 
+        .btn-danger {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(255, 107, 107, 0.4);
+        }
+
         .stocks-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -152,11 +162,26 @@
             text-align: center;
             border: 2px solid transparent;
             transition: all 0.3s ease;
+            position: relative;
         }
 
         .stock-item:hover {
             border-color: #667eea;
             transform: translateY(-3px);
+        }
+
+        .stock-item.clickable {
+            cursor: pointer;
+        }
+
+        .stock-item.clickable:hover {
+            border-color: #ff6b6b;
+            background: rgba(255, 107, 107, 0.1);
+        }
+
+        .stock-item.selected {
+            border-color: #ff6b6b;
+            background: rgba(255, 107, 107, 0.2);
         }
 
         .stock-symbol {
@@ -233,6 +258,21 @@
         .stocks-card {
             grid-column: 1 / -1;
         }
+
+        .remove-mode-info {
+            background: rgba(255, 107, 107, 0.1);
+            border: 1px solid #ff6b6b;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            text-align: center;
+            color: #c53030;
+            font-weight: 500;
+        }
+
+        .hidden {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -263,12 +303,31 @@
                     <span class="icon">➕</span>
                     Add New Stock
                 </div>
-                <p style="margin-bottom: 20px; color: #718096;">Add a new stock symbol with automatic historical integration</p>
+                <p style="margin-bottom: 20px; color: #718096;">Add a new stock symbol with automatic data population</p>
                 <div class="input-group">
                     <label for="newStock">Enter stock symbol (e.g., AAPL):</label>
                     <input type="text" id="newStock" placeholder="Enter stock symbol">
                 </div>
                 <button class="btn btn-secondary" onclick="addStock()">ADD STOCK</button>
+            </div>
+
+            <!-- Remove Stock -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="icon">🗑️</span>
+                    Remove Stock
+                </div>
+                <p style="margin-bottom: 20px; color: #718096;">Remove stocks from your tracking list</p>
+                <div class="input-group">
+                    <label for="removeStock">Enter stock symbol to remove (e.g., AAPL):</label>
+                    <input type="text" id="removeStock" placeholder="Enter stock symbol">
+                </div>
+                <button class="btn btn-danger" onclick="removeStock()">REMOVE STOCK</button>
+                <div style="margin-top: 15px; text-align: center;">
+                    <button class="btn btn-danger" onclick="toggleRemoveMode()" id="removeModeBtn" style="font-size: 0.9rem; padding: 8px 15px;">
+                        CLICK TO REMOVE MODE
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -279,6 +338,12 @@
                 Currently Tracked Stocks
                 <button class="refresh-btn" onclick="loadStocks()">REFRESH LIST</button>
             </div>
+            
+            <div id="removeModeInfo" class="remove-mode-info hidden">
+                🗑️ <strong>Remove Mode Active:</strong> Click on any stock below to remove it from your tracking list.
+                <button onclick="toggleRemoveMode()" style="margin-left: 10px; background: none; border: 1px solid #c53030; color: #c53030; padding: 5px 10px; border-radius: 4px; cursor: pointer;">Cancel</button>
+            </div>
+            
             <div id="stocksList" class="loading">Loading...</div>
         </div>
     </div>
@@ -286,6 +351,7 @@
     <script>
         // Global variables
         let currentStocks = [];
+        let removeMode = false;
 
         // Load initial data
         document.addEventListener('DOMContentLoaded', function() {
@@ -321,13 +387,42 @@
             }
 
             const stocksGrid = stocks.map(stock => `
-                <div class="stock-item">
+                <div class="stock-item ${removeMode ? 'clickable' : ''}" onclick="${removeMode ? `removeStockByClick('${stock}')` : ''}">
                     <div class="stock-symbol">${stock}</div>
                     <div class="stock-description">Tracked in Notion database</div>
                 </div>
             `).join('');
 
             stocksContainer.innerHTML = `<div class="stocks-grid">${stocksGrid}</div>`;
+        }
+
+        // Toggle remove mode
+        function toggleRemoveMode() {
+            removeMode = !removeMode;
+            const removeModeInfo = document.getElementById('removeModeInfo');
+            const removeModeBtn = document.getElementById('removeModeBtn');
+            
+            if (removeMode) {
+                removeModeInfo.classList.remove('hidden');
+                removeModeBtn.textContent = 'EXIT REMOVE MODE';
+                removeModeBtn.style.background = 'linear-gradient(135deg, #718096 0%, #4a5568 100%)';
+            } else {
+                removeModeInfo.classList.add('hidden');
+                removeModeBtn.textContent = 'CLICK TO REMOVE MODE';
+                removeModeBtn.style.background = 'linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%)';
+            }
+            
+            // Refresh display to update clickable states
+            displayStocks(currentStocks);
+        }
+
+        // Remove stock by clicking
+        async function removeStockByClick(symbol) {
+            if (!removeMode) return;
+            
+            if (confirm(`Are you sure you want to remove ${symbol} from tracking?`)) {
+                await performRemoveStock(symbol);
+            }
         }
 
         // Update stocks
@@ -404,6 +499,61 @@
             }
         }
 
+        // Remove stock
+        async function removeStock() {
+            const symbol = document.getElementById('removeStock').value.trim().toUpperCase();
+            
+            if (!symbol) {
+                showMessage('Please enter a stock symbol to remove', 'error');
+                return;
+            }
+            
+            if (!confirm(`Are you sure you want to remove ${symbol} from tracking?`)) {
+                return;
+            }
+            
+            await performRemoveStock(symbol);
+        }
+
+        // Perform stock removal
+        async function performRemoveStock(symbol) {
+            const removeButton = document.querySelector('#removeStock').closest('.card').querySelector('.btn-danger');
+            const originalText = removeButton.textContent;
+            
+            removeButton.disabled = true;
+            removeButton.textContent = 'REMOVING...';
+            
+            try {
+                const response = await fetch('/api/stocks/remove', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ symbol: symbol })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showMessage(`Successfully removed ${symbol} from tracking`, 'success');
+                    document.getElementById('removeStock').value = '';
+                    loadStocks();
+                    
+                    // Exit remove mode if active
+                    if (removeMode) {
+                        toggleRemoveMode();
+                    }
+                } else {
+                    showMessage('Error removing stock: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showMessage('Error removing stock: ' + error.message, 'error');
+            } finally {
+                removeButton.disabled = false;
+                removeButton.textContent = originalText;
+            }
+        }
+
         // Show message
         function showMessage(message, type) {
             const messageDiv = document.createElement('div');
@@ -428,6 +578,12 @@
         document.getElementById('newStock').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 addStock();
+            }
+        });
+
+        document.getElementById('removeStock').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                removeStock();
             }
         });
     </script>
