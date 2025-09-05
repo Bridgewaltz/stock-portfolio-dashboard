@@ -67,6 +67,22 @@ def index():
         logger.error(f"Error serving index page: {str(e)}")
         return f"Error loading page: {str(e)}", 500
 
+@app.route('/api/stocks/remove', methods=['POST'])
+def remove_stock():
+    try:
+        data = request.get_json()
+        symbol = data.get('symbol', '').upper().strip()
+        
+        if not symbol:
+            return jsonify({'success': False, 'error': 'Symbol is required'})
+        
+        # Remove from Notion database
+        integrator.remove_stock_from_database(symbol)
+        
+        return jsonify({'success': True, 'message': f'Successfully removed {symbol}'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/health')
 def health_check():
     """Health check endpoint"""
